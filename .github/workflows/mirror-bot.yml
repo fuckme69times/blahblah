@@ -10,7 +10,7 @@ defaults:
 env:
   GitHubMail: ${{ secrets.GitHubMail }}
   GitHubName: ${{ secrets.GitHubName }} 
-  BRANCH: "master"
+  BRANCH: "ga"
 
 jobs:
 
