@@ -49,7 +49,7 @@ jobs:
           docker-machine env default
       - name: Clone Repository
         run: |
-          git clone https://${GitHubName}:${{ secrets.GH_TOKEN }}@github.com/${{ secrets.MIRROR_REPOSLUG }} source
+          git clone -b ga --single-branch https://${GitHubName}:${{ secrets.GH_TOKEN }}@github.com/${{ secrets.MIRROR_REPOSLUG }} source
       - name: Compile The Mirroring Docker Container
         run: |
           cd source || exit 1
