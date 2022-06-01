@@ -1,0 +1,67 @@
+name: MacOS 10.15
+
+on:
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  GitHubMail: ${{ secrets.GitHubMail }}
+  GitHubName: ${{ secrets.GitHubName }} 
+  BRANCH: "master"
+
+jobs:
+
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait and Early Trigger next workflow
+        run: |
+          # Waits 300 minutes 
+          while ((${TIME_LEFT:=300} > 0)); do
+            printf "Please wait %.f minutes ...\n" "${TIME_LEFT}"
+            sleep 5m
+            TIME_LEFT=$((TIME_LEFT - 5))
+          done
+          # Triggers same workflow before the other job finishes
+          curl -X POST --header "Authorization: token ${{ secrets.GH_TOKEN }}" https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/mirror-bot.yml/dispatches -d '{"ref":"main"}'
+
+  mirror:
+    runs-on: macos-10.15
+    steps:
+      - name: Set Git Configs & Secrets
+        run: |
+          git config --global user.email ${GitHubMail}
+          git config --global user.name ${GitHubName}
+          git config --global credential.helper store
+          echo "https://${GitHubName}:${{ secrets.GH_TOKEN }}@github.com" > ~/.git-credentials
+      - name: Setup docker
+        run: |
+           curl https://raw.githubusercontent.com/Homebrew/homebrew-cask/b2670d5d71ef29cfb0ad4011305f22d00a84e29e/Casks/virtualbox.rb >> virtualbox.rb
+           brew install -f -q --cask virtualbox.rb
+           brew install -f -q --formula docker docker-machine
+      - name: Setup VM
+        run: |
+          curl -sL https://github.com/boot2docker/boot2docker/releases/download/v19.03.12/boot2docker.iso -o ~/Downloads/boot2docker.iso
+          docker-machine create -d virtualbox --virtualbox-disk-size=792135 --virtualbox-memory=150135 --virtualbox-cpu-count=-2 --virtualbox-boot2docker-url ~/Downloads/boot2docker.iso default
+          docker-machine env default
+      - name: Clone Repository
+        run: |
+          git clone https://${GitHubName}:${{ secrets.GH_TOKEN }}@github.com/${{ secrets.MIRROR_REPOSLUG }} source
+      - name: Compile The Mirroring Docker Container
+        run: |
+          cd source || exit 1
+          git checkout $BRANCH
+          eval $(docker-machine env default)
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+          docker container prune --force || true
+          docker build . --rm --force-rm --compress --no-cache=true --pull --file Dockerfile -t mirror-bot
+          docker image ls
+      - name: Running mirror-bot In Docker
+        timeout-minutes: 300
+        continue-on-error: true
+        run: |
+          eval $(docker-machine env default)
+          docker run --privileged --rm -i mirror-bot
